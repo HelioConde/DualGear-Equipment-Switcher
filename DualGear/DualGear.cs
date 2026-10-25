@@ -9,13 +9,15 @@ using UnityEngine.Networking;
 
 namespace DualGear
 {
+    // Host/server-only gameplay. No HUD, custom keybinds, client RPCs, or modded content.
+    // Clients should receive the active equipment through vanilla Inventory replication.
     // Prototype inspired by AlchemyFlame's original 2024 post-use swap technique.
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
     public sealed class DualGearPlugin : BaseUnityPlugin
     {
         public const string PluginGuid = "AlchemyFlame.DualGear";
         public const string PluginName = "DualGear - Equipment Switcher";
-        public const string PluginVersion = "0.2.0";
+        public const string PluginVersion = "0.2.1";
         private const float PlayerScanInterval = 0.5f;
 
         private sealed class Reserve
@@ -48,7 +50,7 @@ namespace DualGear
                 "Log reserve seeding and swaps.");
             On.RoR2.EquipmentSlot.PerformEquipmentAction += OnPerformEquipmentAction;
             On.RoR2.GenericPickupController.AttemptGrant += OnAttemptGrant;
-            Logger.LogInfo("DualGear v" + PluginVersion + " loaded (prototype).");
+            Logger.LogInfo("DualGear v" + PluginVersion + " loaded (server-side prototype; no client UI).");
         }
 
         private void OnDestroy()

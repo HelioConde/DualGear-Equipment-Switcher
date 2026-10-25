@@ -13,6 +13,8 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - run: dotnet run --project tests/DualGear.Tests/DualGear.Tests.csproj -c Release
+      - name: Enforce server-only contract (no client UI or custom networking)
+        run: python3 tests/server_side_contract.py
   build:
     runs-on: ubuntu-latest
     steps:
