@@ -30,14 +30,14 @@ namespace DualGear
         private Run trackedRun;
         private int runGeneration;
         private float nextScan;
-        private ConfigEntry<bool> enabled;
+        private ConfigEntry<bool> pluginEnabled;
         private ConfigEntry<string> startingReserve;
         private ConfigEntry<float> switchDelay;
         private ConfigEntry<bool> verboseLogging;
 
         private void Awake()
         {
-            enabled = Config.Bind("General", "Enabled", true,
+            pluginEnabled = Config.Bind("General", "Enabled", true,
                 "Enable server-authoritative automatic equipment switching.");
             startingReserve = Config.Bind("Prototype", "StartingReserveEquipment", "DroneBackup",
                 "Internal equipment name for a test reserve. Empty disables the test starter.");
@@ -72,7 +72,7 @@ namespace DualGear
                 trackedRun = run;
                 Logger.LogInfo("Run detected; reserves reset.");
             }
-            if (!enabled.Value || Time.unscaledTime < nextScan) return;
+            if (!pluginEnabled.Value || Time.unscaledTime < nextScan) return;
             nextScan = Time.unscaledTime + PlayerScanInterval;
             foreach (PlayerCharacterMasterController player in PlayerCharacterMasterController.instances)
             {
@@ -97,17 +97,17 @@ namespace DualGear
                 Logger.LogWarning("Test equipment unavailable: " + equipmentName);
                 return;
             }
-            reserve.Equipment = new EquipmentState(index, 0f, 1, false);
+            reserve.Equipment = new EquipmentState(index, Run.FixedTimeStamp.positiveInfinity, 1, false);
             reserve.HasEquipment = true;
             if (verboseLogging.Value) Logger.LogInfo("Seeded reserve for " + master.name);
         }
 
         private bool OnPerformEquipmentAction(
             On.RoR2.EquipmentSlot.orig_PerformEquipmentAction orig,
-            EquipmentSlot slot, EquipmentIndex equipmentIndex)
+            EquipmentSlot slot, EquipmentDef equipmentDef)
         {
-            bool success = orig(slot, equipmentIndex);
-            if (!success || !NetworkServer.active || !enabled.Value || trackedRun == null ||
+            bool success = orig(slot, equipmentDef);
+            if (!success || !NetworkServer.active || !pluginEnabled.Value || trackedRun == null ||
                 slot == null || slot.characterBody == null) return success;
 
             CharacterMaster master = slot.characterBody.master;
@@ -116,7 +116,7 @@ namespace DualGear
                 return success;
 
             reserve.SwapPending = true;
-            StartCoroutine(DeferredSwap(master, reserve, equipmentIndex, runGeneration));
+            StartCoroutine(DeferredSwap(master, reserve, equipmentDef != null ? equipmentDef.equipmentIndex : EquipmentIndex.None, runGeneration));
             return success;
         }
 
@@ -126,15 +126,15 @@ namespace DualGear
             yield return new WaitForSeconds(switchDelay.Value);
             try
             {
-                if (!NetworkServer.active || !enabled.Value || trackedRun == null ||
+                if (!NetworkServer.active || !pluginEnabled.Value || trackedRun == null ||
                     runGeneration != expectedGeneration || master == null || master.inventory == null ||
                     !reserves.TryGetValue(master, out Reserve stored) ||
                     !ReferenceEquals(stored, reserve) || !reserve.HasEquipment)
                     yield break;
 
                 Inventory inventory = master.inventory;
-                uint slot = (uint)inventory.activeEquipmentSlot;
-                EquipmentState current = inventory.GetEquipment(slot);
+                EquipmentLocation location = inventory.activeEquipmentLocation;
+                EquipmentState current = inventory.GetEquipment(location);
                 if (!SwapPolicy.CanCommit(
                     trackedRun != null && runGeneration == expectedGeneration,
                     current.equipmentIndex == activatedIndex, reserve.HasEquipment))
@@ -142,8 +142,8 @@ namespace DualGear
 
                 EquipmentState next = reserve.Equipment;
                 if (next.equipmentIndex == EquipmentIndex.None) yield break;
-                inventory.SetEquipment(next, slot);
-                if (inventory.GetEquipment(slot).equipmentIndex != next.equipmentIndex)
+                inventory.SetEquipment(next, location.slot, location.set);
+                if (inventory.GetEquipment(location).equipmentIndex != next.equipmentIndex)
                 {
                     Logger.LogWarning("Swap did not commit; old reserve retained.");
                     yield break;
