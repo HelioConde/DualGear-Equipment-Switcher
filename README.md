@@ -1,15 +1,13 @@
 <div align="center">
-
-# ⚡ DualGear — Equipment Switcher
-
-**Two equipment choices. One active slot. Automatic rotation after use.**
-
-A server-side-first gameplay mod for **Risk of Rain 2**, developed independently from [PlayWithEliteItem](https://github.com/HelioConde/PlayWithEliteItem).
-
-![C#](https://img.shields.io/badge/C%23-.NET-512BD4?logo=dotnet&logoColor=white) ![Status](https://img.shields.io/badge/status-prototype%20v0.2.1-64748b) ![Architecture](https://img.shields.io/badge/architecture-server--side-2563eb)
-
-[**How it works**](#how-it-works) · [**Build and test**](#build-and-test) · [**Server-side requirements**](docs/SERVER_SIDE.md)
-
+  <h1>⚡ DualGear — Equipment Switcher</h1>
+  <p><strong>Two equipment choices. One active slot. Automatic rotation after use.</strong></p>
+  <p>A server-side-first gameplay mod for <strong>Risk of Rain 2</strong>, developed independently from <a href="https://github.com/HelioConde/PlayWithEliteItem">PlayWithEliteItem</a>.</p>
+  <p>
+    <img alt="C#" src="https://img.shields.io/badge/C%23-.NET-512BD4?logo=dotnet&logoColor=white">
+    <img alt="Status" src="https://img.shields.io/badge/status-prototype%20v0.2.1-64748b">
+    <img alt="Server-side architecture" src="https://img.shields.io/badge/architecture-server--side-2563eb">
+  </p>
+  <p><a href="#how-it-works">How it works</a> · <a href="#build-and-test">Build and test</a> · <a href="docs/SERVER_SIDE.md">Server-side requirements</a></p>
 </div>
 
 > **Experimental — not a verified multiplayer release.** The project has a host/server-only design and automated checks. Actual Risk of Rain 2 gameplay with unmodded clients still needs to be tested before making compatibility guarantees.
