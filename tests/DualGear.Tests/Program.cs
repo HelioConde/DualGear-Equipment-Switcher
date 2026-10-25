@@ -18,7 +18,11 @@ internal static class Program
             Check(!SwapPolicy.CanCommit(false, true, true), "old run");
             Check(!SwapPolicy.CanCommit(true, false, true), "pickup race");
             Check(!SwapPolicy.CanCommit(true, true, false), "reserve missing");
-            Console.WriteLine("PASS: 8 DualGear policy tests.");
+            Check(SwapPolicy.CanCapture(false, false, true), "simple inventory can stash second equipment");
+            Check(!SwapPolicy.CanCapture(true, false, true), "full reserve retains vanilla pickup behavior");
+            Check(!SwapPolicy.CanCapture(false, true, true), "pending swap blocks capture");
+            Check(!SwapPolicy.CanCapture(false, false, false), "multiple slots or sets excluded");
+            Console.WriteLine("PASS: 12 DualGear policy tests.");
             return 0;
         }
         catch (Exception e)

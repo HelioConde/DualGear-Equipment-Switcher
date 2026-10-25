@@ -15,7 +15,7 @@ namespace DualGear
     {
         public const string PluginGuid = "AlchemyFlame.DualGear";
         public const string PluginName = "DualGear - Equipment Switcher";
-        public const string PluginVersion = "0.1.0";
+        public const string PluginVersion = "0.2.0";
         private const float PlayerScanInterval = 0.5f;
 
         private sealed class Reserve
@@ -39,7 +39,7 @@ namespace DualGear
         {
             pluginEnabled = Config.Bind("General", "Enabled", true,
                 "Enable server-authoritative automatic equipment switching.");
-            startingReserve = Config.Bind("Prototype", "StartingReserveEquipment", "DroneBackup",
+            startingReserve = Config.Bind("Prototype", "StartingReserveEquipment", "",
                 "Internal equipment name for a test reserve. Empty disables the test starter.");
             switchDelay = Config.Bind("Switching", "DelaySeconds", 0.3f,
                 new ConfigDescription("Delay after successful activation before swapping.",
@@ -47,12 +47,14 @@ namespace DualGear
             verboseLogging = Config.Bind("Diagnostics", "VerboseLogging", false,
                 "Log reserve seeding and swaps.");
             On.RoR2.EquipmentSlot.PerformEquipmentAction += OnPerformEquipmentAction;
+            On.RoR2.GenericPickupController.AttemptGrant += OnAttemptGrant;
             Logger.LogInfo("DualGear v" + PluginVersion + " loaded (prototype).");
         }
 
         private void OnDestroy()
         {
             On.RoR2.EquipmentSlot.PerformEquipmentAction -= OnPerformEquipmentAction;
+            On.RoR2.GenericPickupController.AttemptGrant -= OnAttemptGrant;
             StopAllCoroutines();
             ClearRunState();
         }
@@ -100,6 +102,87 @@ namespace DualGear
             reserve.Equipment = new EquipmentState(index, Run.FixedTimeStamp.positiveInfinity, 1, false);
             reserve.HasEquipment = true;
             if (verboseLogging.Value) Logger.LogInfo("Seeded reserve for " + master.name);
+        }
+
+        // A normal equipment pickup is the second gear source. Temporarily vacating
+        // the one active location lets vanilla grant the new pickup without dropping
+        // the previous equipment into the world. Store the old *full state* only
+        // after checking the pickup was actually granted.
+        private void OnAttemptGrant(
+            On.RoR2.GenericPickupController.orig_AttemptGrant orig,
+            GenericPickupController controller, CharacterBody body)
+        {
+            if (!NetworkServer.active || !pluginEnabled.Value || trackedRun == null ||
+                controller == null || body == null || body.master == null ||
+                body.inventory == null || !reserves.TryGetValue(body.master, out Reserve reserve))
+            {
+                orig(controller, body);
+                return;
+            }
+
+            Inventory inventory = body.inventory;
+            PickupDef pickup = PickupCatalog.GetPickupDef(controller.pickup.pickupIndex);
+            if (pickup == null || pickup.equipmentIndex == EquipmentIndex.None)
+            {
+                orig(controller, body);
+                return;
+            }
+
+            // Extra equipment slots/sets have their own pickup semantics.
+            // Leave MUL-T and Functional Coupler to vanilla for now.
+            if (!SwapPolicy.CanCapture(
+                reserve.HasEquipment, reserve.SwapPending,
+                inventory.equipmentSlotCount == 1 && inventory.equipmentSetCount == 1))
+            {
+                orig(controller, body);
+                return;
+            }
+
+            EquipmentLocation location = inventory.activeEquipmentLocation;
+            EquipmentState previous = inventory.GetEquipment(location);
+            if (previous.equipmentIndex == EquipmentIndex.None)
+            {
+                orig(controller, body);
+                return;
+            }
+
+            // Clear before orig so the vanilla pickup doesn't eject the original
+            // equipment, then restore it if the pickup was denied.
+            inventory.SetEquipment(
+                new EquipmentState(EquipmentIndex.None, Run.FixedTimeStamp.positiveInfinity, 0, false),
+                location.slot, location.set);
+
+            try
+            {
+                orig(controller, body);
+            }
+            finally
+            {
+                EquipmentState current = inventory.GetEquipment(location);
+                if (current.equipmentIndex == pickup.equipmentIndex)
+                {
+                    reserve.Equipment = previous;
+                    reserve.HasEquipment = true;
+                    if (verboseLogging.Value)
+                        Logger.LogInfo("Captured previous equipment in reserve: " +
+                            previous.equipmentIndex);
+                }
+                else if (current.equipmentIndex == EquipmentIndex.None)
+                {
+                    // Grant failed or was rejected: no equipment should be lost.
+                    inventory.SetEquipment(previous, location.slot, location.set);
+                    if (verboseLogging.Value)
+                        Logger.LogInfo("Equipment grant did not complete; restored original.");
+                }
+                else
+                {
+                    // Another mod replaced the slot during the pickup. The old item
+                    // was removed by us, so keep it safe instead of destroying it.
+                    reserve.Equipment = previous;
+                    reserve.HasEquipment = true;
+                    Logger.LogWarning("Nonstandard pickup result; original saved to reserve.");
+                }
+            }
         }
 
         private bool OnPerformEquipmentAction(
