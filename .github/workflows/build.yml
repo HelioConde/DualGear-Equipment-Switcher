@@ -1,0 +1,29 @@
+name: Build DualGear
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet run --project tests/DualGear.Tests/DualGear.Tests.csproj -c Release
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet restore DualGear/DualGear.csproj
+      - run: dotnet build DualGear/DualGear.csproj -c Release --no-restore
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: DualGear-dev
+          path: DualGear/bin/Release/netstandard2.1/DualGear.dll
