@@ -1,64 +1,109 @@
-# DualGear — Equipment Switcher
+<div align="center">
 
-An independent **Risk of Rain 2** gameplay mod developed by AlchemyFlame (Hélio Conde), based on the automatic post-activation equipment swapping mechanism built in PlayWithEliteItem in 2024.
+# ⚡ DualGear — Equipment Switcher
 
-**Status: prototype v0.2.1 (host-only architecture). The gameplay and unmodded-client compatibility still require in-game testing.**
+**Two equipment choices. One active slot. Automatic rotation after use.**
 
-## Core idea
+A server-side-first gameplay mod for **Risk of Rain 2**, developed independently from [PlayWithEliteItem](https://github.com/HelioConde/PlayWithEliteItem).
 
-Each player has an active equipment and a second one held in a virtual reserve. After the active equipment successfully fires, DualGear waits **0.3 seconds** and exchanges both equipment states. The reserve belongs to that player and is stored on the server, not inside MUL-T's physical extra equipment slot.
+![C#](https://img.shields.io/badge/C%23-.NET-512BD4?logo=dotnet&logoColor=white) ![Status](https://img.shields.io/badge/status-prototype%20v0.2.1-64748b) ![Architecture](https://img.shields.io/badge/architecture-server--side-2563eb)
 
-## Server-side only — permanent design requirement
+[**How it works**](#how-it-works) · [**Build and test**](#build-and-test) · [**Server-side requirements**](docs/SERVER_SIDE.md)
 
-**Only the host or dedicated server installs DualGear.** Connected players should use the original Risk of Rain 2 client, its default controls and its normal equipment HUD. There is **no custom HUD, UI overlay, client-side input, hotkey, client plugin, custom RPC or custom networked content**.
+</div>
 
-The server owns each player's reserve and handles equipment pickup and automatic swapping. Only the **currently active equipment** is written into the vanilla `Inventory`; the reserve is deliberately hidden from clients. The game is responsible for replicating the active equipment to them through its standard networking. The reserve is *not* a second visible client slot.
+> **Experimental — not a verified multiplayer release.** The project has a host/server-only design and automated checks. Actual Risk of Rain 2 gameplay with unmodded clients still needs to be tested before making compatibility guarantees.
 
-The plugin does not deliberately require client installation. Whether an **unmodded client can connect and see every transition correctly** must still be validated in a real multiplayer lobby; passing GitHub Actions is not sufficient. See [server-side design and test plan](docs/SERVER_SIDE.md).
+## How it works
 
-## Capturing naturally acquired equipment (experimental)
+Each player has **one visible active equipment** and **one hidden reserve** maintained by the server.
 
-With an empty reserve, when a player with one active equipment picks up another equipment in the world, DualGear temporarily clears the active location before passing the interaction to the **vanilla** pickup handler. This prevents the old equipment from being ejected; on a successful pickup it is stored as the second equipment, preserving its state. If the pickup fails, the original state is restored.
+```text
+Player uses active equipment
+            │
+            ▼
+Did the equipment action succeed?
+            │ yes
+            ▼
+   Wait 0.3 seconds (default)
+            │
+            ▼
+  Swap active ↔ reserve states
+            │
+            ▼
+Vanilla inventory replicates the active item
+```
 
-This applies **only to single-slot/single-set inventories** while no swap is pending. MUL-T and Functional Coupler use vanilla behavior until dedicated integration testing.
+The reserve is **not** a second physical equipment slot like MUL-T's; it belongs to the server's per-player state.
 
-The default test starter is now disabled. Set `StartingReserveEquipment` to an internal equipment name to manually seed a reserve for diagnostics. No free equipment is granted by default.
+## Core design decisions
 
-## Current development scope
+| Requirement | What it means |
+| --- | --- |
+| **Host/server installation only** | No mod installation is intended for players connecting with the original client |
+| **No custom HUD** | The default equipment icon, controls and cooldown UI remain in use |
+| **No client changes** | No overlays, keybinds, client plugin, RPC or custom networked content |
+| **Swap after success** | No rotation after a failed equipment activation |
+| **Preserve equipment state** | The swap works with `EquipmentState` to retain relevant charge/cooldown information |
+| **No free starter by default** | Reserve begins empty unless diagnostic seeding is configured |
 
-- Server-only inventory mutations and per-player reserves.
-- Intercepts `EquipmentSlot.PerformEquipmentAction` and swaps only after success.
-- Configurable test equipment in the reserve. Default: empty (no starter); change `StartingReserveEquipment` in BepInEx config, or set empty to disable test seeding.
-- Preserves `EquipmentState` rather than merely swapping indices, so charges/cooldown can be retained.
-- Refuses swapping if an equipment pickup changes the active slot during the delay.
-- Prevents simultaneous swaps for the same player.
+**Important distinction:** these are the implemented design choices and intended compatibility properties. Network synchronization with **unmodded clients** is not certified until verified inside the game.
 
-**World pickup capture has been implemented experimentally for ordinary inventories, but has NOT been tested in a running game.** No HUD or additional UI will be developed. MUL-T and Functional Coupler support are deferred pending compatibility testing. Current game updates changed the equipment location API; this build must be checked before public release.
+### Acquiring the reserve (experimental)
 
-## Config
+For ordinary, single-slot inventories, the mod attempts to capture a **second equipment picked up in the world** instead of letting the original equipment be ejected. If the pickup fails, it restores the previous state.
 
-`BepInEx/config/AlchemyFlame.DualGear.cfg`: `Enabled`, `StartingReserveEquipment`, `DelaySeconds`, `VerboseLogging`.
+This mechanism is **implemented but unverified in live gameplay**. MUL-T and Functional Coupler use their standard pickup behavior until specific compatibility tests are completed.
 
-## Build
+## Build and test
 
-```sh
+Prerequisites: .NET SDK compatible with the project and Risk of Rain 2/BepInEx dependencies resolved as configured.
+
+```bash
+git clone https://github.com/HelioConde/DualGear-Equipment-Switcher.git
+cd DualGear-Equipment-Switcher
+
 dotnet restore DualGear/DualGear.csproj
 dotnet build DualGear/DualGear.csproj -c Release --no-restore
 dotnet run --project tests/DualGear.Tests/DualGear.Tests.csproj -c Release
 ```
 
-GitHub Actions compiles the plugin, runs the policy tests and checks that client-side interfaces or custom networking have not been introduced; passing CI does not mean gameplay was verified. Download the compiled DLL from a successful workflow artifact, extract it and place it inside `BepInEx/plugins/` in a dedicated mod-testing profile.
+A successful [GitHub Actions](https://github.com/HelioConde/DualGear-Equipment-Switcher/actions) workflow can provide the compiled DLL as an artifact. Use a dedicated **BepInEx test profile** and install the compiled plugin **on the host/server only**.
 
-## Roadmap
+**Running these tests does not run Risk of Rain 2.** A real solo test and vanilla-client multiplayer test are separate release gates.
 
-1. Compile against current Risk of Rain 2 API and validate solo prototype.
-2. Validate **second naturally acquired equipment** pickup capture (implemented experimentally).
-3. Verify equipment swapping and cooldown replication with **unmodded** clients (host-only installation).
-4. Test disconnect/reconnect, respawn, MUL-T and Functional Coupler without adding client features.
-5. Package a separately branded **server-side** Thunderstore release after gameplay and multiplayer validation.
+## Configuration
 
-## Origin
+When generated, the configuration path is:
 
-This is independent of [PlayWithEliteItem](https://github.com/HelioConde/PlayWithEliteItem). Similar equipment carrying mechanics exist in MUL-T and Functional Coupler; DualGear focuses on **automatic rotation after a successful equipment use**.
+`BepInEx/config/AlchemyFlame.DualGear.cfg`
 
-MIT licensed — Copyright © Hélio Conde (AlchemyFlame).
+| Setting | Purpose |
+| --- | --- |
+| `Enabled` | Enable/disable the mod |
+| `StartingReserveEquipment` | Optional internal equipment name for diagnostics; empty by default |
+| `DelaySeconds` | Wait after successful equipment use (default **0.3s**) |
+| `VerboseLogging` | Additional diagnostic information |
+
+## Test checklist before publication
+
+- [ ] Equip two items naturally and confirm neither is lost unexpectedly.
+- [ ] Verify automatic swap only after an equipment action actually succeeds.
+- [ ] Check that charges, cooldowns and equipment state survive the swap.
+- [ ] Connect clients with **no DualGear installed**, verify inventories, icon and activation.
+- [ ] Test joining late, reconnecting, respawns and stage transitions.
+- [ ] Test failure paths and repeated activations without duplicated swaps.
+- [ ] Check MUL-T and Functional Coupler with appropriate exclusions.
+- [ ] Revalidate the plugin against the current game equipment API.
+
+**Read the [server-side architecture and test plan](docs/SERVER_SIDE.md)** for the more detailed constraints.
+
+## Relationship to PlayWithEliteItem
+
+[**PlayWithEliteItem**](https://github.com/HelioConde/PlayWithEliteItem) is a separately published mod that distributes random elite aspects. **DualGear** is an independent experiment in **automatic equipment rotation after activation**, inspired by earlier item-swapping work. The two mods have distinct behaviors and release lifecycles.
+
+## Project status and license
+
+**Prototype v0.2.1** · automated builds and policy tests · **manual gameplay and multiplayer validation pending**.
+
+MIT licensed. Created by [Hélio Conde / AlchemyFlame](https://github.com/HelioConde). This is an independent, unofficial Risk of Rain 2 community project.
